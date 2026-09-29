@@ -1,0 +1,4 @@
+#!/bin/sh
+exec 2>&1
+cd @DOMOTICZ@
+exec chpst -u @USER@:@USER@ ./domoticz -www 8080 -sslwww 0 -log /tmp/domoticz.log

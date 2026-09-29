@@ -1,0 +1,3 @@
+#!/bin/sh
+exec 2>&1
+exec chpst -u @USER@:@USER@ python3 @DIR@/st480_bot.py >> /tmp/st480-bot.log 2>&1

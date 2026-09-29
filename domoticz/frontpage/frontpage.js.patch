@@ -1,0 +1,118 @@
+--- frontpage.js (original)
++++ frontpage.js (st480-gateway)
+@@ -50,2 +50,8 @@
+ 
++// base64 -> UTF-8 text (napr. nazvy urovni selektora s diakritikou)
++function b64utf8(s) {
++	try { return decodeURIComponent(escape(atob(s))); }
++	catch (e) { return atob(s); }
++}
++
+ <!-- Main Frontpage fuction -->
+@@ -85,3 +91,3 @@
+     
+-	var jurl=$.domoticzurl+"/json.htm?type=devices&plan="+$.roomplan+"&jsoncallback=";
++	var jurl=$.domoticzurl+"/json.htm?type=command&param=getdevices&plan="+$.roomplan+"&jsoncallback=";
+ 	$.getJSON(jurl,
+@@ -357,52 +363,13 @@
+ 	
+-	//Selector Switches
++	//Selector Switches - zobrazi vsetky urovne (aj uroven 0), aktualnu zvyrazni
+ 	if(vtype == 'Selector') {
+-		vdata = item['Level']; //get current level
+-		var lvlnames = atob(item['LevelNames']).split("|"); //get all levels
+-		var countlevels = atob(item['LevelNames']).split("|").length-1; //count the number of levels
+-		var lvlindex;
+-		if (item['Level'] == '0'){
+-			lvlindex = 0;
+-		}
+-		else {
+-			var temp = item['Level'] + "";
+-			lvlindex = temp.slice(0, -1);
+-		}
+-		var LevelName = lvlnames[lvlindex];
+-		if (LevelName == 'Off') {
+-			LevelName = txt_off;
+-		}
+-		//alert(lvlnames);
+-		if(lvlindex == 0) { //switch is off
+-			//var hlp = '<span onclick=BlindChangeStatus('plus', vdata, item.idx);lightbox_open(\'switch\', '+switch_on_timeout+', '+txt_switch_on+')"; style='+alarmcss+'>'+ vdata+'</span>';
+-			//allow button to switch on
+-			var hlp = '<span onclick="BlindChangeStatus(\'plus\', '+vdata+', '+item.idx+');lightbox_open(\'switch\', '+switch_on_timeout+', '+txt_switch_on+')"; style='+alarmcss+'>'+LevelName+'</span>';
+-			var plus = ""; //no up when switch is off
+-			var min = ""; //no down when switch is off
+-			//var plus = "<img src=icons/up_off.png align=right vspace=12 width=30 onclick=BlindChangeStatus('plus'," +vdata+ "," + item.idx + ")>";
+-			//var min = "<img src=icons/down_off.png align=left vspace=12 width=30>";
+-		}
+-		else { //switch is on
+-//			if (lvlindex == countlevels) { //max level, don't allow plus button to go to next level which isn't there
+-//				var plus = "<img src=icons/up.png align=right vspace=12 width=30>";
+-//			}
+-//			else {
+-//				var plus = "<img src=icons/up.png align=right vspace=12 width=30 onclick=BlindChangeStatus('plus'," +vdata+ "," + item.idx + ")>";
+-//			}
+-//			var min = "<img src=icons/down.png align=left vspace=12 width=30 onclick=BlindChangeStatus('min'," +vdata+ "," + item.idx + ")>";
+-			var hlp = '';
+-			//allow button to switch off
+-			for( var xx = 1; xx <= countlevels; xx++ ) {	
+-				if (xx == lvlindex) {
+-				    hlp += '<div style="margin-top: 8px;background-color: #c0c0c0;"><span onclick="SwitchDimmer('+item.idx+', '+xx*10+');"; style='+alarmcss+'>'+lvlnames[xx]+'</span></div>';
+-            	//alert(lvlnames[xx]);
+-				} else {
+-					hlp += '<div style="margin-top: 8px;"><span onclick="SwitchDimmer('+item.idx+', '+xx*10+');"; style='+alarmcss+'>'+lvlnames[xx]+'</span></div>';
+-				}
+-				//alert(vdata);
+-			}
+-			//alert(hlp);
++		var lvlnames = b64utf8(item['LevelNames']).split("|");
++		var lvlindex = Math.round(item['Level'] / 10);
++		var hlp = '';
++		for (var xx = 0; xx < lvlnames.length; xx++) {
++			if (lvlnames[xx] == 'Off' || lvlnames[xx] == '') continue;
++			var bg = (xx == lvlindex) ? 'background-color: #c0c0c0;' : '';
++			hlp += '<div style="margin-top: 4px;' + bg + '"><span onclick="SwitchDimmer(' + item.idx + ', ' + xx*10 + ');"; style=' + alarmcss + '>' + lvlnames[xx] + '</span></div>';
+ 		}
+-		//console.log(vdata);
+-		vdata = hlp
++		vdata = hlp;
+ 	}
+@@ -868,2 +835,13 @@
+ 
++	// tlacidla s potvrdenim (napr. rozkurenie / vyhasinanie) - fp_buttons v settings
++	if (typeof fp_buttons != 'undefined' && fp_buttons[item.idx]) {
++		vdata = fp_buttons[item.idx][0];
++		alarmcss = color_on;
++		switchclick = 'onclick="FpButton(' + item.idx + ')"';
++	}
++	// spinace len na citanie (napr. cerpadla) - fp_readonly v settings
++	if (typeof fp_readonly != 'undefined' && fp_readonly.indexOf(item.idx) > -1) {
++		switchclick = '';
++	}
++
+ 	if (vdata == txt_off && vplusmin ==6) { //protect switch when on for vplusmin is 6
+@@ -971,3 +949,3 @@
+ 
+-var jurl=$.domoticzurl+"/json.htm?type=scenes&plan="+$.roomplan+"&jsoncallback=?";
++var jurl=$.domoticzurl+"/json.htm?type=command&param=getscenes&plan="+$.roomplan+"&jsoncallback=?";
+ $.getJSON(jurl,
+@@ -1120,2 +1098,10 @@
+ 	
++// tlacidlo s potvrdenim - posle On, gateway spusti prikaz v kotli
++function FpButton(idx)
++	{
++	if (confirm(fp_buttons[idx][1])) {
++		SwitchToggle(idx, 'On');
++	}
++	}
++
+ //switch dimmer and set level
+@@ -1338,2 +1324,4 @@
+ 		newvalue='';
++		currentvalue = parseFloat(currentvalue);
++		if (isNaN(currentvalue)) { return; }	// zla hodnota (napr. zly idx) - nic neposielat
+ 		//console.log(dimtype,stepsize,idx,currentvalue,thermmax)
+@@ -1354,3 +1342,3 @@
+ 		$.ajax({
+-			url: $.domoticzurl+"/json.htm?type=command&param=udevice" + "&idx=" + idx + "&nvalue=0&svalue=" + newvalue,
++			url: $.domoticzurl+"/json.htm?type=command&param=setsetpoint" + "&idx=" + idx + "&setpoint=" + newvalue,
+ 			async: false, 

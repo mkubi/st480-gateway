@@ -1,0 +1,12 @@
+# secrets
+bot/telegram.conf
+telegram.conf
+# runtime
+*.log
+!tools/sample_capture.log
+__pycache__/
+*.pyc
+# Domoticz data
+*.db
+*.db-shm
+*.db-wal

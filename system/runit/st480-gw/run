@@ -1,0 +1,4 @@
+#!/bin/sh
+# log: /tmp/st480.log (RAM)
+exec 2>&1
+exec chpst -u @USER@:dialout python3 @DIR@/st480_gw.py

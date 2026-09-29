@@ -1,0 +1,5 @@
+# Nastavenie Telegram bota (premenuj na telegram.conf a chmod 600)
+# TOKEN: od BotFathera (ten isty ako v Domoticzi)
+TOKEN=123456789:AAH-sem-vloz-svoj-token
+# CHATS: povolene chaty oddelene ciarkou - skupina (zaporne cislo) a/alebo osoby
+CHATS=-987654321
