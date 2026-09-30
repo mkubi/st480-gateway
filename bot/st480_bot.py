@@ -43,6 +43,8 @@ REZIMY = {                            # skratka -> presny nazov v gatewayi
     "letny": "Letný",
 }
 
+RETRY = [1, 3, 10, 30, 60]         # s cakania po 1., 2., ... chybe za sebou
+
 log = logging.getLogger("st480-bot")
 
 
@@ -209,16 +211,26 @@ def main():
     k = Kotol()
     log.info("Bot spusteny, povolene chaty: %s", sorted(chats))
     offset = None
+    failures = 0
     while True:
         try:
-            params = {"timeout": 50}
+            # kratsie cakanie: dlhe "tiche" spojenia niektore zariadenia po ceste rusia
+            params = {"timeout": 25}
             if offset is not None:
                 params["offset"] = offset
-            updates = tg.call("getUpdates", params, http_timeout=60)
+            updates = tg.call("getUpdates", params, http_timeout=35)
         except Exception as ex:
-            log.warning("Telegram nedostupny: %s - skusim znova o 10 s", ex)
-            time.sleep(10)
+            failures += 1
+            wait = RETRY[min(failures, len(RETRY)) - 1]
+            # obcasne prerusenie je normalne - varovanie az ked to trva dlhsie
+            level = logging.WARNING if failures >= 3 else logging.INFO
+            log.log(level, "Telegram nedostupny (%dx): %s - skusim znova o %d s",
+                    failures, ex, wait)
+            time.sleep(wait)
             continue
+        if failures >= 3:
+            log.info("Spojenie s Telegramom obnovene")
+        failures = 0
         for u in updates:
             offset = u["update_id"] + 1
             msg = u.get("message") or u.get("edited_message")
