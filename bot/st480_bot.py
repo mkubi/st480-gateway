@@ -148,12 +148,21 @@ def overit_neskor(tg, k, chat, key, cakana, nazov):
     threading.Timer(CONFIRM_AFTER, check).start()
 
 
+KNOWN = {"stav", "teplota", "start", "uk", "tuv", "rezim", "pomoc", "help"}
+MY_NAME = ""                          # meno bota z getMe, napr. kotol_st480_bot
+
+
 def handle(tg, k, chat, text):
     words = text.strip().split()
     if not words or not words[0].startswith("/"):
         return
-    cmd = words[0][1:].split("@")[0].lower()     # /stav@kotol_bot -> stav
+    cmd, _, target = words[0][1:].partition("@")  # /stav@kotol_bot -> stav, kotol_bot
+    cmd = cmd.lower()
     arg = " ".join(words[1:])
+    if target and MY_NAME and target.lower() != MY_NAME.lower():
+        return                        # prikaz pre ineho bota v skupine
+    if cmd not in KNOWN and chat < 0:
+        return                        # neznamy prikaz v skupine - asi pre ineho bota
 
     if cmd in ("stav", "teplota", "start"):
         tg.send(chat, prehlad(k))
@@ -192,6 +201,11 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s")
     token, chats, api = load_config()
     tg = Telegram(token, api)
+    global MY_NAME
+    try:
+        MY_NAME = tg.call("getMe").get("username", "")
+    except Exception as ex:
+        log.warning("getMe zlyhalo: %s", ex)
     k = Kotol()
     log.info("Bot spusteny, povolene chaty: %s", sorted(chats))
     offset = None

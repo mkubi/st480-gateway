@@ -48,6 +48,7 @@ def crc16_mcrf4xx(data):
 | `FFFA` | room regulator (e.g. ST-280) |
 | `FFF8` | GSM module |
 | `0000` | all devices - commands are sent with this address |
+| `FFFF` | announcement to all modules - seen as `0225 = 0000` ("cancel alarm") when the controller tries to clear a sensor alarm (every ~90 s while a sensor is missing) |
 
 ## Timing
 
@@ -69,6 +70,17 @@ poll; the gateway merges pending writes to the same register.
 - all values are 16-bit, **signed** (two's complement) where temperatures can be negative
 - measured temperatures are in 0.1 °C (`0x010E` = 27.0 °C), set-points in whole °C
 - `0xF830` = -200.0 °C means **sensor missing / broken**
+- with a missing sensor the controller retries **every ~90 s**: it broadcasts
+  `FFFF` / `0225 = 0000` (cancel alarm), sets the value to **`0000` (0 °C) - not a
+  measurement** - and ~16 s later reports `F830` again. The gateway ignores a `0`
+  that directly follows `F830`. Observed with the flue gas sensor disconnected:
+
+  ```
+  15:05:06  frame to FFFF: 0225=0000      (alarm cancel attempt)
+  15:05:14  15B7 = 0000                   (placeholder, not a reading)
+  15:05:30  15B7 = F830                   (sensor still missing)
+  15:06:35  frame to FFFF: 0225=0000      (next attempt, ~89 s later)
+  ```
 - limits (`169E`, `169F`): low byte = minimum, high byte = maximum (`0x501E` = 30-80 °C)
 - clock (`1620`, `0298`): high byte = hour, low byte = minute (`0x150E` = 21:14)
 

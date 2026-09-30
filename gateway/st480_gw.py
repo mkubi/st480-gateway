@@ -75,6 +75,8 @@ SETPOINT_REG_TUV = 0x028E
 
 ADDR_ETH = 0xFFF4        # ramce pre ethernet modul - tie citame
 ADDR_ALL = 0x0000        # ramce pre vsetkych - tak posielame prikazy
+SENSOR_MISSING = 0xF830   # -200.0 C = regulator hlasi chybajuci / vadny snimac
+ADDR_BROADCAST = 0xFFFF   # oznamenie pre vsetky moduly (napr. 0225 po zruseni alarmu)
 ADDR_NAMES = {0xFFFA: "izbovy regulator", 0xFFF8: "GSM modul"}
 
 DEVICE = {
@@ -373,7 +375,7 @@ def decode(e: dict, raw: int):
     if lo is not None and not lo < v < hi:
         return None
     if e.get("dc") == "temperature" and v <= -100:
-        return None          # -200.0 (0xF830) = regulator hlasi odpojeny snimac
+        return None          # -200.0 (SENSOR_MISSING) = regulator hlasi odpojeny snimac
     return str(v)
 
 
@@ -391,7 +393,13 @@ class Decoder:
             if e is None:
                 self._other(reg, raw)
                 continue
-            changed = self.last_raw.get(reg) != raw
+            prev = self.last_raw.get(reg)
+            if raw == 0 and prev == SENSOR_MISSING and e.get("dc") == "temperature":
+                # Regulator pri pokuse o zrusenie alarmu (0225) hodnotu odpojeneho
+                # snimaca na chvilu vynuluje - to nie je meranie, ignorujeme
+                log.debug("%s: 0 po chybajucom snimaci (zrusenie alarmu), ignorujem", e["name"])
+                continue
+            changed = prev != raw
             self.last_raw[reg] = raw
             value = decode(e, raw)
             if value is None:
@@ -428,6 +436,13 @@ def handle_frame(frame, decoder: Decoder):
     if addr == ADDR_ETH:
         return decoder.process(regs)
     text = " ".join(f"{r:04x}={v:04x}" for r, v in regs)
+    if addr == ADDR_BROADCAST:
+        for reg, val in regs:
+            if reg == 0x0225:
+                log.info("Regulator oznamil zrusenie alarmu (0225=%04x)", val)
+            else:
+                log.info("Oznamenie pre vsetky moduly: %04x=%04x", reg, val)
+        return {}
     if addr == ADDR_ALL:
         log.debug("Ramec pre vsetkych (echo nasho prikazu?): %s", text)
     elif addr in ADDR_NAMES:
