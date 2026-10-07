@@ -86,6 +86,26 @@ DEVICE = {
     "model": "ST-480",
 }
 
+# Poradca pri kureni: odporucanie a trend spalin (zobrazene napr. vo frontpage)
+ADVISOR_ENTITIES = {
+    "odporucanie": dict(name="Odporúčanie"),
+    "spaliny_trend": dict(name="Trend spalín", unit="°C/min"),
+    "kurenie_dlzka": dict(name="Dĺžka kúrenia", unit="min"),
+    "tuv_nahrievanie": dict(name="Nahrievanie TÚV", unit="°C/h"),
+    "tuv_hotova": dict(name="TÚV hotová"),
+}
+ADV_TUV_WINDOW = 1200    # s - nahrievanie bojlera z poslednych 20 minut (meni sa pomaly)
+ADV_TUV_MIN_RATE = 0.5   # °C/h - pomalsie = bojler sa nenahrieva
+ADV_WINDOW = 600         # s - trend sa pocita z poslednych 10 minut
+ADV_FALLING = -2.0       # °C/min - spaliny klesaju rychlejsie = dohorieva
+ADV_FALLING_CLEAR = -1.0 # °C/min - "Prilož" zmizne az ked sa trend zlepsi nad toto
+ADV_UK_FLAT = 0.1        # °C/min - UK uz nestupa
+ADV_UK_LOW = 50          # °C - pod touto teplotou kotol kondenzuje / dechtuje
+ADV_FLUE_HOT = 350       # °C - spaliny prilis horuce
+ADV_FLUE_FIRE = 60       # °C - pod tymto spalinami povazujeme kotol za vyhasnuty
+ADV_PUMP_OFF = 2         # °C - cerpadlo TUV vypnut, ked UK <= TUV + toto
+ADV_PUMP_ON = 8          # °C - cerpadlo TUV zapnut, ked UK >= TUV + toto
+
 # Informacie o samotnom EeePC (IP adresa, Wi-Fi) - samostatne zariadenie
 HOST_DEVICE = {"identifiers": ["st480_host"], "name": "EeePC", "model": "Eee PC 901"}
 HOST_ENTITIES = {
@@ -431,6 +451,125 @@ class Decoder:
             log.debug("Neznamy register 0x%04x = 0x%04x", reg, raw)
 
 
+class Advisor:
+    """Odporucanie pri kureni z vyvoja teplot (spaliny, UK, TUV, cerpadlo)."""
+
+    def __init__(self):
+        self.now = {}            # posledne hodnoty
+        self.hist = {"teplota_spalin": [], "uk_aktualna": [], "tuv_aktualna": []}
+        self.state_since = None  # od kedy je kotol v aktualnom stave
+        self.last_advice = None
+        self.burn_start = None   # od kedy hori (spaliny nad ADV_FLUE_FIRE)
+        self.last_burn = None    # dlzka posledneho kurenia v s
+
+    def _slope(self, key, t, window=ADV_WINDOW):
+        """Zmena za okno v °C/min, None ak je malo dat."""
+        h = [(ts, v) for ts, v in self.hist[key] if t - ts <= window]
+        self.hist[key] = h
+        if len(h) < 3 or h[-1][0] - h[0][0] < window / 2:
+            return None
+        n = len(h)
+        mt = sum(ts for ts, _ in h) / n
+        mv = sum(v for _, v in h) / n
+        var = sum((ts - mt) ** 2 for ts, _ in h)
+        cov = sum((ts - mt) * (v - mv) for ts, v in h)
+        return cov / var * 60 if var else None    # linearna regresia, °C/min
+
+    def feed(self, updates: dict, t=None):
+        """Prijme hodnoty z ramca, vrati aktualizacie pre MQTT."""
+        t = time.monotonic() if t is None else t
+        for key, val in updates.items():
+            if key == "stav" and val != self.now.get("stav"):
+                self.state_since = t
+            self.now[key] = val
+            if key in self.hist:
+                try:
+                    self.hist[key].append((t, float(val)))
+                except ValueError:
+                    pass
+        if not updates:
+            return {}
+        return self.evaluate(t)
+
+    def evaluate(self, t):
+        def num(key):
+            try:
+                return float(self.now[key])
+            except (KeyError, ValueError):
+                return None
+
+        flue, uk, tuv = num("teplota_spalin"), num("uk_aktualna"), num("tuv_aktualna")
+        tuv_set = num("tuv_setpoint")
+        pump = self.now.get("cerpadlo_tuv")
+        flue_slope = self._slope("teplota_spalin", t)
+        uk_slope = self._slope("uk_aktualna", t)
+        out = {}
+        if flue_slope is not None:
+            out["spaliny_trend"] = f"{flue_slope:.1f}"
+
+        # dlzka kurenia: od rozpalenia (spaliny nad ADV_FLUE_FIRE) po vyhasnutie
+        if flue is not None:
+            if flue >= ADV_FLUE_FIRE and self.burn_start is None:
+                self.burn_start = t
+            elif flue < ADV_FLUE_FIRE - 10 and self.burn_start is not None:
+                self.last_burn = t - self.burn_start
+                self.burn_start = None
+            dur = t - self.burn_start if self.burn_start is not None else self.last_burn
+            if dur is not None:
+                out["kurenie_dlzka"] = str(int(dur // 60))
+
+        # nahrievanie bojlera a odhad, kedy bude na ziadanej teplote
+        tuv_slope = self._slope("tuv_aktualna", t, ADV_TUV_WINDOW)
+        if tuv_slope is not None and tuv is not None:
+            rate = tuv_slope * 60                       # °C/h
+            out["tuv_nahrievanie"] = f"{rate:.1f}"
+            if tuv_set is not None and tuv >= tuv_set:
+                out["tuv_hotova"] = "hotová"
+            elif rate >= ADV_TUV_MIN_RATE and tuv_set is not None:
+                m = int((tuv_set - tuv) / rate * 60)
+                out["tuv_hotova"] = ("> 10 h" if m > 600 else
+                                     f"~{m} min" if m < 60 else f"~{m // 60} h {m % 60} min")
+            else:
+                out["tuv_hotova"] = "nenahrieva"
+
+        if flue is None or uk is None:
+            return out
+        stav = self.now.get("stav", "")
+        if "RUCN" not in stav:
+            # automatika: palivo aj cerpadla riadi regulator - len suhrn
+            if flue >= ADV_FLUE_HOT:
+                out["odporucanie"] = "Spaliny vysoko!"
+            elif stav and self.state_since is not None:
+                m = int((t - self.state_since) // 60)
+                dlzka = f"{m} min" if m < 90 else f"{m // 60} h {m % 60} min"
+                out["odporucanie"] = f"{stav} {dlzka}"
+            return out
+        burning = flue >= ADV_FLUE_FIRE
+        if tuv is not None and pump == "ON" and uk <= tuv + ADV_PUMP_OFF:
+            advice = "Vypni čerp. TÚV"
+        elif (burning and tuv is not None and pump == "OFF" and uk >= tuv + ADV_PUMP_ON
+              and (tuv_set is None or tuv < tuv_set)):
+            advice = "Zapni čerp. TÚV"
+        elif not burning:
+            advice = "--"
+        elif flue >= ADV_FLUE_HOT:
+            advice = "Uber vzduch"
+        elif (flue_slope is not None and (uk_slope is None or uk_slope <= ADV_UK_FLAT)
+              and (flue_slope <= ADV_FALLING
+                   # hystereza: uz hlasene "Prilož" drz, kym sa trend jasne nezlepsi
+                   or (self.last_advice == "Prilož" and flue_slope <= ADV_FALLING_CLEAR))):
+            advice = "Prilož"
+        elif uk_slope is not None and uk_slope <= ADV_UK_FLAT and uk < ADV_UK_LOW:
+            # ohen hori (spaliny neklesaju), ale kotol je studeny a nestupa -
+            # vykon nestaci na odber (klesa alebo stoji pod ADV_UK_LOW)
+            advice = "Pridaj vzduch"
+        else:
+            advice = "Horí OK"
+        self.last_advice = advice
+        out["odporucanie"] = advice
+        return out
+
+
 def handle_frame(frame, decoder: Decoder):
     addr, regs = frame
     if addr == ADDR_ETH:
@@ -525,6 +664,13 @@ def discovery_messages():
                         "min_temp": lo, "max_temp": hi, "temp_step": 1,
                         "temperature_unit": "C", "modes": ["heat"]})
         msgs.append((f"{DISCOVERY_PREFIX}/{comp}/st480/{key}/config", cfg))
+    for key, a in ADVISOR_ENTITIES.items():
+        cfg = {"name": a["name"], "unique_id": f"st480_{key}",
+               "object_id": f"st480_{key}", "state_topic": topic(key, "state"),
+               "availability_topic": avail, "device": DEVICE}
+        if "unit" in a:
+            cfg["unit_of_measurement"] = a["unit"]
+        msgs.append((f"{DISCOVERY_PREFIX}/sensor/st480/{key}/config", cfg))
     for key, h in HOST_ENTITIES.items():
         cfg = {"name": h["name"], "unique_id": f"st480_{key}",
                "object_id": f"st480_{key}", "state_topic": topic(key, "state"),
@@ -782,6 +928,7 @@ def tcp_server(srv: socket.socket, cmd_q: queue.Queue, stop: threading.Event):
 # ---------------------------------------------------------------------------
 def serial_loop(port, decoder, link, cmd_q, stop):
     parser = FrameParser()
+    advisor = Advisor()
     while not stop.is_set():
         try:
             with serial.serial_for_url(port, baudrate=BAUDRATE, timeout=0.05) as ser:
@@ -796,7 +943,9 @@ def serial_loop(port, decoder, link, cmd_q, stop):
                         last_rx = now
                         for frame in parser.feed(data):
                             poll_open = is_poll(frame)
-                            link.update(handle_frame(frame, decoder))
+                            values = handle_frame(frame, decoder)
+                            link.update(values)
+                            link.update(advisor.feed(values))
                         continue
 
                     idle = now - last_rx

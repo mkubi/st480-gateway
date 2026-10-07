@@ -125,6 +125,9 @@ def prehlad(k):
         "Čerpadlá: ÚK {}, TÚV {}".format(onoff.get(k.state.get("cerpadlo_uk"), "--"),
                                          onoff.get(k.state.get("cerpadlo_tuv"), "--")),
         f"Režim: {k.get('rezim')}",
+        f"Odporúčanie: {k.get('odporucanie')} (spaliny {k.get('spaliny_trend', ' °C/min')})",
+        f"Kúrenie: {k.get('kurenie_dlzka', ' min')}   TÚV hotová: {k.get('tuv_hotova')} "
+        f"({k.get('tuv_nahrievanie', ' °C/h')})",
     ]
     if k.state.get("_status") == "offline":
         lines.insert(0, "POZOR: gateway je offline, hodnoty môžu byť staré!")

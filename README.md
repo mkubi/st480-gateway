@@ -7,6 +7,8 @@ itself, no `idx` juggling) and lets you change the pump mode and the CH / DHW
 set-points remotely - from Domoticz, a wall-mounted kiosk page or Telegram.
 
 Runs happily on a 2008 Asus Eee PC 901 (Atom, 1 GB RAM, 32-bit antiX Linux).
+Hardware: a plain USB → RS-232 adapter and a 3-wire cable to the controller's RJ12
+socket - see [docs/hardware.md](docs/hardware.md).
 
 ```
  TECH ST-480 ──bus 9600 8N1──> USB serial ──> st480_gw.py ──MQTT──> Mosquitto
@@ -31,6 +33,9 @@ Runs happily on a 2008 Asus Eee PC 901 (Atom, 1 GB RAM, 32-bit antiX Linux).
   the controller itself reports.
 - Commands are sent right after the controller's poll frame, exactly like the
   original module; repeated clicks on a set-point are merged into one command
+- Heating advisor: in manual operation "add fuel", "too much air", "switch DHW pump
+  on / off" from the flue gas and water temperature trends (`ADV_*` thresholds);
+  in automatic mode a summary - how long the boiler is in its current state
 - MQTT auto-discovery (Domoticz, Home Assistant, openHAB, ...)
 - Telegram: alerts (alarm, overheating, lost connection, DHW cold / hot) and a bot
   for `/stav`, `/uk 58`, `/tuv 50`, `/rezim letny`
@@ -53,7 +58,7 @@ Runs happily on a 2008 Asus Eee PC 901 (Atom, 1 GB RAM, 32-bit antiX Linux).
 | `system/` | runit services, Mosquitto config, kiosk setup |
 | `tools/` | raw bus capture tool and a sample capture |
 | `install.sh` | installer (packages, files, runit services) |
-| `docs/` | protocol, installation, troubleshooting |
+| `docs/` | hardware (wiring), protocol, installation, troubleshooting |
 
 ## Quick start
 

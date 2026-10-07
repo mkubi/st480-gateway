@@ -143,6 +143,9 @@ $(document).ready(function() {
 	['0','Desc',		'cell7',	'TUV','0','0'],
 	['21','SetPoint',	'cell7a',	'TUV zadane','1','5'],	// Kotol ST-480 (TÚV žiadaná)
 	['10','Temp',		'cell7b',	'TUV aktualne','1','0'],
+	['0','Desc',		'cell8',	'Rada','0','0'],
+	['25','Data',		'cell8a',	'Odporucanie','0','0'],	// OVERIT idx "Kotol ST-480 (Odporúčanie)"
+	['26','Data',		'cell8b',	'Trend spalin','0','0'],	// OVERIT idx "Kotol ST-480 (Trend spalín)" 
 
 	['13','Temp',		'cell9',	'Podavac','1','0'],
 	['14','Data',		'cell10',	'Ventilator','1','0'],
