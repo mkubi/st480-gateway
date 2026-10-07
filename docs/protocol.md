@@ -61,6 +61,10 @@ The controller sends one frame every ~4 s in a 16 s cycle:
 | B | fuel level / reserve, table `16F9`/`16C2` (valve data) |
 | poll | empty frame `02 26 FF F4 02 18 A1 DE` - invitation for the Ethernet module |
 
+The poll frame only appears when the controller's menu has the module type set to
+**Ethernet** (not GSM) - reported by sikor16 (elektroda.pl post #391). Without the
+poll the gateway falls back to sending after a 20 s bus pause, which may be ignored.
+
 A command is sent **after the poll frame** (the gateway waits 50 ms). According to
 the elektroda.pl thread the controller leaves ~6 s for an answer. One command per
 poll; the gateway merges pending writes to the same register.
@@ -83,6 +87,24 @@ poll; the gateway merges pending writes to the same register.
   ```
 - limits (`169E`, `169F`): low byte = minimum, high byte = maximum (`0x501E` = 30-80 °C)
 - clock (`1620`, `0298`): high byte = hour, low byte = minute (`0x150E` = 21:14)
+
+## Register numbering: 5000 + parameter
+
+Found by sikor16 (elektroda.pl post #391): a register number is the number of the
+parameter in the TECH web modules, **status registers have 5000 added**. The register
+you write is therefore the status register **minus 5000**:
+
+| Status (read) | dec | Parameter | Write | Result on ST-480 |
+|---|---|---|---|---|
+| `157E` CH set-point | 5502 | 502 | `01F6` | works |
+| `1616` DHW set-point | 5654 | 654 | `028E` | works |
+| `15CD` pump mode | 5581 | 581 | `0245` | works |
+| `1610` standby | 5648 | 648 | `0288` | not tested |
+| `1587` / `1588` feeder / fan | 5511 / 5512 | 511 / 512 | `01FF` / `0200` | no reaction |
+| `1589` / `158B` CH / DHW pump | 5513 / 5515 | 513 / 515 | `0201` / `0203` | no reaction |
+
+So the rule tells you *where* a parameter could be written, but the controller decides
+*whether* it accepts it - pumps, fan and feeder are read-only from the bus.
 
 ## Registers sent by the ST-480 (read)
 
@@ -110,6 +132,9 @@ poll; the gateway merges pending writes to the same register.
 | `0245` | pump mode command register | |
 | `16F9` / `16C2` | parameter index / valve address | table, not decoded |
 | `1684` | unknown | always 0 so far |
+| `15AB` | floor heating pump | 0 / 1 - reported by sikor16; not sent by the author's controller (depends on pump configuration) |
+| `16AE` | additional pump | 0 / 1 - as above |
+| `16B0` | additional pump type | 1 floor, 4 circulation, 5 unknown - as above |
 
 ## Registers you can write
 

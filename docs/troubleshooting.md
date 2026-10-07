@@ -12,6 +12,7 @@ Problems we actually hit while building this, with the fix.
 | Flue gas jumps to 600 °C, then -200 / 0 | intermittent contact: damaged insulation at the cable joint (wires touching = low / -200, loose joint = very high). The sensor itself was fine | repair the joint with high-temperature insulation (silicone / glass fibre sleeving), keep joints away from the hot pipe. Check: PT1000 = 1000 Ω at 0 °C, ~1078 Ω at 20 °C, ~1385 Ω at 100 °C, wiggle test |
 | 0 °C alternating with -200 while the sensor is disconnected | controller's placeholder value after its alarm cancel attempt (`0225`) | nothing - the gateway ignores it |
 | Set-point in Domoticz jumps back | controller did not accept the write | only `01F6` / `028E` work on the ST-480 |
+| No poll frame `02 26 FF F4 02 18 A1 DE`, commands ignored | controller menu has the module set to GSM | set the module type to **Ethernet** in the controller menu |
 | Several clicks = several slow steps | one command per poll (16 s) | queue merges writes to the same register |
 | `nan` set-point in Domoticz | frontpage sent `NaN` because of a wrong `idx` | correct `idx`; gateway and frontpage ignore NaN |
 | IP shown as `192.168 ??` | Domoticz created a number sensor from a value starting with digits | gateway sends `IP 192.168...`; delete and recreate the device |

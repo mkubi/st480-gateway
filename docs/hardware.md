@@ -51,6 +51,31 @@ trusting the numbers (controller powered, plug disconnected from the adapter):
 Then connect controller TX → adapter RXD (DB9 pin 2), controller RX → adapter TXD
 (DB9 pin 3), GND → DB9 pin 5.
 
+### Cable colours
+
+A typical RJ12 cable (sikor16, latch **down**, pins from the left): 1 white = controller
+RX, 2 black = GND, 3 red = controller TX, 4 green = GND, 5 yellow and 6 blue = +14.65 V.
+Colours depend on the cable - always measure.
+
+## Microcontroller instead of RS-232 (ESP8266 / ESP32)
+
+sikor16 (elektroda.pl post #391) runs the same protocol on a Wemos D1 mini with
+ESPHome. Notes from his build:
+
+- the controller's TX needs an **inverter** in front of the 3.3 V UART input
+  (e.g. BC547 transistor) - the signal is 0 V / +15 V with RS-232 polarity
+- the controller's RX is internally pulled up to ≈7.5 V and accepts commands only
+  from a **clean open collector**: NPN transistor (BC547) pulling the line to GND,
+  **no pull-up and no series resistor**. With 1 kΩ in the collector the low level was
+  ≈1.1 V and the controller ignored commands; an extra 2.2 kΩ pull-up to 5 V also
+  disturbed it
+- on ESP8266 UART0 is used for the controller, so the logger must be disabled
+  (`logger: baud_rate: 0`)
+
+His schematics and ESPHome code are in the thread. The solar controller ST-401n uses
+different levels (≈+6.5 V idle, ≈-7 V bits, TTL polarity) and was read through a
+MAX3232 module.
+
 ## Linux side
 
 - FTDI is supported by the kernel (`ftdi_sio`), no driver needed
